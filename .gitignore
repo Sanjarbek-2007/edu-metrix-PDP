@@ -1,0 +1,40 @@
+# Combined .gitignore for EduMetrix and Unicorn
+
+# Java/Maven
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+# Node/Vite
+node_modules/
+dist/
+build/
+coverage/
+
+# IDEs
+.idea/
+.vscode/
+*.iws
+*.iml
+*.ipr
+
+# Misc
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# STS/Eclipse
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
