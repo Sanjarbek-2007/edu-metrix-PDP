@@ -1,12 +1,9 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { 
   User, Student, PointChange, Certificate, Violation, 
   AbsenceRequest, AttendanceRecord, Message 
 } from '../types';
-import { 
-  mockUsers, mockStudents, mockPointChanges, mockCertificates, 
-  mockViolations, mockAbsenceRequests, mockAttendanceRecords, mockMessages 
-} from '../data/mockData';
+import { api } from '../lib/api';
 
 interface AppContextType {
   currentUser: User | Student | null;
@@ -26,166 +23,211 @@ interface AppContextType {
   isActivitySidebarOpen: boolean;
   setIsActivitySidebarOpen: (open: boolean) => void;
   
-  // Actions
-  login: (email: string) => boolean;
+  // Actions (Asynchronous)
+  login: (email: string, password?: string) => Promise<boolean>;
   logout: () => void;
-  updateCertificate: (id: string, status: 'Approved'|'Rejected', points?: number, reason?: string) => void;
-  addViolation: (violation: Omit<Violation, 'id'>) => void;
-  addPointChange: (change: Omit<PointChange, 'id' | 'date'>) => void;
-  updateAbsenceRequest: (id: string, status: 'Approved' | 'Rejected', note?: string) => void;
-  addAbsenceRequest: (req: Omit<AbsenceRequest, 'id'>) => void;
-  addCertificate: (cert: Omit<Certificate, 'id'>) => void;
-  submitAttendance: (records: Omit<AttendanceRecord, 'id'>[]) => void;
-  updateUser: (id: string, updates: Partial<User>) => void;
-  addUser: (user: Omit<User, 'id'>) => void;
-  updateStudent: (id: string, updates: Partial<Student>) => void;
-  addMessage: (message: Omit<Message, 'id' | 'timestamp' | 'date'>) => void;
+  updateCertificate: (id: string, status: 'Approved'|'Rejected', points?: number, reason?: string) => Promise<void>;
+  addViolation: (violation: Omit<Violation, 'id'>) => Promise<void>;
+  addPointChange: (change: Omit<PointChange, 'id' | 'date'>) => Promise<void>;
+  updateAbsenceRequest: (id: string, status: 'Approved' | 'Rejected', note?: string) => Promise<void>;
+  addAbsenceRequest: (req: Omit<AbsenceRequest, 'id'>) => Promise<void>;
+  addCertificate: (cert: Omit<Certificate, 'id'>) => Promise<void>;
+  submitAttendance: (records: Omit<AttendanceRecord, 'id'>[]) => Promise<void>;
+  updateUser: (id: string, updates: Partial<User>) => Promise<void>;
+  addUser: (user: Omit<User, 'id'>) => Promise<void>;
+  updateStudent: (id: string, updates: Partial<Student>) => Promise<void>;
+  addMessage: (message: Omit<Message, 'id' | 'timestamp' | 'date'>) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
-  const [currentUser, setCurrentUser] = useState<User | Student | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | Student | null>(() => {
+    const savedUser = localStorage.getItem('user');
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
+  
   const [isActivitySidebarOpen, setIsActivitySidebarOpen] = useState(false);
   
-  const [users, setUsers] = useState<User[]>(mockUsers);
-  const [students, setStudents] = useState<Student[]>(mockStudents);
-  const [pointChanges, setPointChanges] = useState<PointChange[]>(mockPointChanges);
-  const [certificates, setCertificates] = useState<Certificate[]>(mockCertificates);
-  const [violations, setViolations] = useState<Violation[]>(mockViolations);
-  const [absenceRequests, setAbsenceRequests] = useState<AbsenceRequest[]>(mockAbsenceRequests);
-  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>(mockAttendanceRecords);
-  const [messages, setMessages] = useState<Message[]>(mockMessages);
+  const [users, setUsers] = useState<User[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [pointChanges, setPointChanges] = useState<PointChange[]>([]);
+  const [certificates, setCertificates] = useState<Certificate[]>([]);
+  const [violations, setViolations] = useState<Violation[]>([]);
+  const [absenceRequests, setAbsenceRequests] = useState<AbsenceRequest[]>([]);
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
 
-  const login = (email: string) => {
-    const user = users.find(u => u.email === email) || students.find(s => s.email === email);
-    if (user) {
-      setCurrentUser(user);
-      return true;
+  // 1. Fetch system datasets from backend when logged in
+  const fetchAllData = async () => {
+    try {
+      const [
+        usersData, studentsData, pointsData, certsData, 
+        violsData, absenceData, attendanceData, messagesData
+      ] = await Promise.all([
+        api.get('/api/users'),
+        api.get('/api/students'),
+        api.get('/api/point-changes'),
+        api.get('/api/certificates'),
+        api.get('/api/violations'),
+        api.get('/api/absence-requests'),
+        api.get('/api/attendance-records'),
+        api.get('/api/messages')
+      ]);
+
+      setUsers(usersData || []);
+      setStudents(studentsData || []);
+      setPointChanges(pointsData || []);
+      setCertificates(certsData || []);
+      setViolations(violsData || []);
+      setAbsenceRequests(absenceData || []);
+      setAttendanceRecords(attendanceData || []);
+      setMessages(messagesData || []);
+    } catch (error) {
+      console.error('Error fetching datasets from server', error);
     }
-    return false;
   };
 
-  const logout = () => setCurrentUser(null);
+  useEffect(() => {
+    if (currentUser) {
+      fetchAllData();
+    }
+  }, [currentUser]);
 
-  const updateCertificate = (id: string, status: 'Approved'|'Rejected', points?: number, reason?: string) => {
-    setCertificates(prev => prev.map(c => 
-      c.id === id ? { ...c, status, pointsAwarded: points, rejectionReason: reason } : c
-    ));
-    if (status === 'Approved' && points) {
-      const cert = certificates.find(c => c.id === id);
-      if (cert) {
-        addPointChange({
-          studentId: cert.studentId,
-          category: 'Amaliyot',
-          amount: points,
-          reason: `Certificate Approved: ${cert.title}`,
-          approvedBy: currentUser?.name || 'Admin',
-        });
+  // 2. Actions connected to Spring Boot REST Endpoints
+  const login = async (email: string, password = 'password123') => {
+    try {
+      const response = await api.post('/api/public/auth/login', { email, password });
+      if (response && response.token) {
+        localStorage.setItem('token', response.token);
+        localStorage.setItem('user', JSON.stringify(response.user));
+        setCurrentUser(response.user);
+        return true;
       }
+      return false;
+    } catch (e) {
+      console.error('Login action failed', e);
+      return false;
     }
   };
 
-  const addPointChange = (change: Omit<PointChange, 'id' | 'date'>) => {
-    const newChange: PointChange = {
-      ...change,
-      id: `pc-${Date.now()}`,
-      date: new Date().toISOString()
-    };
-    setPointChanges(prev => [newChange, ...prev]);
-
-    // Update student score
-    setStudents(prev => prev.map(s => {
-      if (s.id === change.studentId) {
-        const categoryKey = change.category.toLowerCase() as keyof Student['scores'];
-        const newScore = s.scores[categoryKey] + change.amount;
-        // Cap max scores
-        let finalScore = newScore;
-        if (change.category === 'Baho' && newScore > 40) finalScore = 40;
-        if (change.category === 'Davomat' && newScore > 25) finalScore = 25;
-        if (change.category === 'Xulq' && newScore > 20) finalScore = 20;
-        if (change.category === 'Amaliyot' && newScore > 15) finalScore = 15;
-        
-        return {
-          ...s,
-          scores: { ...s.scores, [categoryKey]: finalScore },
-          totalScore: s.totalScore + (finalScore - s.scores[categoryKey]) // adjustment
-        };
-      }
-      return s;
-    }));
+  const logout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setCurrentUser(null);
+    setUsers([]);
+    setStudents([]);
+    setPointChanges([]);
+    setCertificates([]);
+    setViolations([]);
+    setAbsenceRequests([]);
+    setAttendanceRecords([]);
+    setMessages([]);
   };
 
-  const addViolation = (violation: Omit<Violation, 'id'>) => {
-    const newViolation: Violation = {
-      ...violation,
-      id: `v-${Date.now()}`,
-      date: violation.date || new Date().toISOString()
-    };
-    setViolations(prev => [newViolation, ...prev]);
-    addPointChange({
-      studentId: violation.studentId,
-      category: 'Xulq',
-      amount: -violation.pointsDeducted,
-      reason: `Violation: ${violation.type} - ${violation.description}`,
-      approvedBy: currentUser?.name || 'System'
-    });
+  const updateCertificate = async (id: string, status: 'Approved'|'Rejected', points?: number, reason?: string) => {
+    try {
+      await api.put(`/api/certificates/${id}`, {
+        status,
+        pointsAwarded: points,
+        rejectionReason: reason,
+        approvedBy: currentUser?.name || 'Admin'
+      });
+      // Refresh datasets to sync adjusted scores
+      await fetchAllData();
+    } catch (e) {
+      console.error('Failed to update certificate', e);
+    }
   };
 
-  const updateAbsenceRequest = (id: string, status: 'Approved' | 'Rejected', note?: string) => {
-    setAbsenceRequests(prev => prev.map(req => 
-      req.id === id ? { ...req, status, note } : req
-    ));
+  const addPointChange = async (change: Omit<PointChange, 'id' | 'date'>) => {
+    try {
+      await api.post('/api/point-changes', change);
+      await fetchAllData();
+    } catch (e) {
+      console.error('Failed to add point change', e);
+    }
   };
 
-  const addAbsenceRequest = (req: Omit<AbsenceRequest, 'id'>) => {
-    const newReq: AbsenceRequest = {
-      ...req,
-      id: `req-${Date.now()}`
-    };
-    setAbsenceRequests(prev => [newReq, ...prev]);
+  const addViolation = async (violation: Omit<Violation, 'id'>) => {
+    try {
+      await api.post('/api/violations', violation);
+      await fetchAllData();
+    } catch (e) {
+      console.error('Failed to report violation', e);
+    }
   };
 
-  const addCertificate = (cert: Omit<Certificate, 'id'>) => {
-    const newCert: Certificate = {
-      ...cert,
-      id: `cert-${Date.now()}`
-    };
-    setCertificates(prev => [newCert, ...prev]);
+  const updateAbsenceRequest = async (id: string, status: 'Approved' | 'Rejected', note?: string) => {
+    try {
+      await api.put(`/api/absence-requests/${id}`, { status, note });
+      await fetchAllData();
+    } catch (e) {
+      console.error('Failed to update absence request', e);
+    }
   };
 
-  const submitAttendance = (records: Omit<AttendanceRecord, 'id'>[]) => {
-    const newRecords = records.map(r => ({
-      ...r,
-      id: `at-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-    }));
-    setAttendanceRecords(prev => [...newRecords, ...prev]);
+  const addAbsenceRequest = async (req: Omit<AbsenceRequest, 'id'>) => {
+    try {
+      await api.post('/api/absence-requests', req);
+      await fetchAllData();
+    } catch (e) {
+      console.error('Failed to submit absence request', e);
+    }
   };
 
-  const updateUser = (id: string, updates: Partial<User>) => {
-    setUsers(prev => prev.map(u => u.id === id ? { ...u, ...updates } : u));
+  const addCertificate = async (cert: Omit<Certificate, 'id'>) => {
+    try {
+      await api.post('/api/certificates', cert);
+      await fetchAllData();
+    } catch (e) {
+      console.error('Failed to submit certificate', e);
+    }
   };
 
-  const addUser = (user: Omit<User, 'id'>) => {
-    const newUser: User = {
-      ...user,
-      id: `u-${Date.now()}`
-    };
-    setUsers(prev => [...prev, newUser]);
+  const submitAttendance = async (records: Omit<AttendanceRecord, 'id'>[]) => {
+    try {
+      await api.post('/api/attendance-records/batch', records);
+      await fetchAllData();
+    } catch (e) {
+      console.error('Failed to submit attendance logs', e);
+    }
   };
 
-  const updateStudent = (id: string, updates: Partial<Student>) => {
-    setStudents(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+  const updateUser = async (id: string, updates: Partial<User>) => {
+    try {
+      await api.put(`/api/users/${id}`, updates);
+      await fetchAllData();
+    } catch (e) {
+      console.error('Failed to update user', e);
+    }
   };
 
-  const addMessage = (message: Omit<Message, 'id' | 'timestamp' | 'date'>) => {
-    const newMessage: Message = {
-      ...message,
-      id: `msg-${Date.now()}`,
-      date: new Date().toISOString().split('T')[0],
-      timestamp: new Date().toISOString()
-    };
-    setMessages(prev => [newMessage, ...prev]);
+  const addUser = async (user: Omit<User, 'id'>) => {
+    try {
+      await api.post('/api/users', user);
+      await fetchAllData();
+    } catch (e) {
+      console.error('Failed to create user account', e);
+    }
+  };
+
+  const updateStudent = async (id: string, updates: Partial<Student>) => {
+    try {
+      await api.put(`/api/students/${id}`, updates);
+      await fetchAllData();
+    } catch (e) {
+      console.error('Failed to update student profile', e);
+    }
+  };
+
+  const addMessage = async (message: Omit<Message, 'id' | 'timestamp' | 'date'>) => {
+    try {
+      await api.post('/api/messages', message);
+      await fetchAllData();
+    } catch (e) {
+      console.error('Failed to send message', e);
+    }
   };
 
   return (

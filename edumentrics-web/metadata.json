@@ -1,0 +1,6 @@
+{
+  "name": "EduMetric CRM",
+  "description": "Comprehensive student performance tracking and dormitory management system, including Admin and Commandant dashboards.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

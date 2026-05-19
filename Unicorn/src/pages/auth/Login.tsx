@@ -17,9 +17,10 @@ export default function Login() {
   const { login } = useAppContext();
   const navigate = useNavigate();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (login(email)) {
+    const success = await login(email, password);
+    if (success) {
       toast.success('Xush kelibsiz!');
       navigate('/');
     } else {
@@ -27,12 +28,15 @@ export default function Login() {
     }
   };
 
-  const demoLogin = (demoEmail: string) => {
+  const demoLogin = async (demoEmail: string) => {
     setEmail(demoEmail);
     setPassword('password123');
-    if (login(demoEmail)) {
+    const success = await login(demoEmail, 'password123');
+    if (success) {
       toast.success('Demo rejimiga xush kelibsiz!');
       navigate('/');
+    } else {
+      toast.error('Demo rejimga kirib bo\'lmadi');
     }
   };
 
